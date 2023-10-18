@@ -2,7 +2,7 @@
 
 use std::{
     error::Error,
-    ffi::{CStr, CString},
+    ffi::{c_char, c_void, CStr, CString},
     fmt,
 };
 
@@ -27,25 +27,32 @@ impl fmt::Display for SketchybarError {
 
 impl Error for SketchybarError {}
 
-pub type mach_handler = *mut libc::c_void;
+pub type mach_handler = extern "C" fn(Env) -> c_void;
 #[link(name = "sketchybar", kind = "static")]
 extern "C" {
-    pub fn sketchybar(message: *mut i8) -> *mut i8;
-    pub fn event_server_begin(event_handler: mach_handler, bootstrap_name: *mut i8);
-    pub fn env_get_value_for_key(env: env, key: *mut i8) -> *mut i8;
+    pub fn sketchybar(message: *mut c_char) -> *mut c_char;
+    pub fn event_server_begin(
+        event_handler: mach_handler,
+        bootstrap_name: *mut c_char,
+    );
+    pub fn env_get_value_for_key(env: env, key: *mut c_char) -> *mut c_char;
 
 }
-pub type env = CString;
-pub struct Env;
+type env = *mut c_char;
+#[repr(transparent)]
+pub struct Env {
+    inner: env,
+}
 impl Env {
-    pub fn get_v_for_c(env_v: env, key: &str) -> String {
+    pub fn get_v_for_c(&self, key: &str) -> String {
         let string = CString::new(key).unwrap();
-        let foo = unsafe {env_get_value_for_key(env_v, string.into_raw())};
+        let foo =
+            unsafe { env_get_value_for_key(self.inner, string.into_raw()) };
 
-        let bar = unsafe {
-            CStr::from_ptr(foo).to_str().unwrap()
-        };
-        bar.to_owned()
+        unsafe {
+            core::str::from_utf8_unchecked(CStr::from_ptr(foo).to_bytes())
+        }
+        .to_owned()
     }
 }
 /// Sends a message to `SketchyBar` and returns the response.
@@ -97,11 +104,12 @@ pub fn message(message: &str) -> Result<String, SketchybarError> {
     Ok(result)
 }
 
-pub fn server_begin(mut event_handler: &dyn Fn(), bootstrap_name: &str) {
+pub fn server_begin(event_handler: mach_handler, bootstrap_name: &str) {
     let string = CString::new(bootstrap_name).unwrap();
-    let _ = unsafe { 
+    let _ = unsafe {
         event_server_begin(
-            &mut event_handler as *mut _ as *mut libc::c_void,
-            string.into_raw())
+            event_handler,
+            string.into_raw(),
+        )
     };
 }
