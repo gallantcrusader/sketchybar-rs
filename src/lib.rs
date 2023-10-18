@@ -27,11 +27,14 @@ impl fmt::Display for SketchybarError {
 
 impl Error for SketchybarError {}
 
+pub type mach_handler = *mut libc::c_void;
 #[link(name = "sketchybar", kind = "static")]
 extern "C" {
-    fn sketchybar(message: *mut i8) -> *mut i8;
-}
+    pub fn sketchybar(message: *mut i8) -> *mut i8;
+    pub fn event_server_begin(event_handler: mach_handler, bootstrap_name: *mut i8);
 
+}
+pub type Env = CString;
 /// Sends a message to `SketchyBar` and returns the response.
 ///
 /// # Arguments
@@ -79,4 +82,13 @@ pub fn message(message: &str) -> Result<String, SketchybarError> {
     };
 
     Ok(result)
+}
+
+pub fn server_begin(mut event_handler: &dyn Fn(), bootstrap_name: &str) {
+    let string = CString::new(bootstrap_name).unwrap();
+    let _ = unsafe { 
+        event_server_begin(
+            &mut event_handler as *mut _ as *mut libc::c_void,
+            string.into_raw())
+    };
 }

@@ -13,6 +13,7 @@ license = "MIT"
 
 [dependencies]
 libc = "0.2.149"
+mach = { git = "https://github.com/gallantcrusader/mach", version = "0.3.3" }
 
 [build-dependencies]
 cc = "1.0.83"
