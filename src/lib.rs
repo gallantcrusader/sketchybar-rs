@@ -32,9 +32,22 @@ pub type mach_handler = *mut libc::c_void;
 extern "C" {
     pub fn sketchybar(message: *mut i8) -> *mut i8;
     pub fn event_server_begin(event_handler: mach_handler, bootstrap_name: *mut i8);
+    pub fn env_get_value_for_key(env: env, key: *mut i8) -> *mut i8;
 
 }
-pub type Env = CString;
+pub type env = CString;
+pub struct Env;
+impl Env {
+    pub fn get_v_for_c(env_v: env, key: &str) -> String {
+        let string = CString::new(key).unwrap();
+        let foo = unsafe {env_get_value_for_key(env_v, string.into_raw())};
+
+        let bar = unsafe {
+            CStr::from_ptr(foo).to_str().unwrap()
+        };
+        bar.to_owned()
+    }
+}
 /// Sends a message to `SketchyBar` and returns the response.
 ///
 /// # Arguments
