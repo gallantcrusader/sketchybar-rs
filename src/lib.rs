@@ -2,7 +2,7 @@
 
 use std::{
     error::Error,
-    ffi::{c_char, c_void, CStr, CString},
+    ffi::{c_char, CStr, CString},
     fmt,
 };
 
@@ -27,32 +27,35 @@ impl fmt::Display for SketchybarError {
 
 impl Error for SketchybarError {}
 
-pub type mach_handler = extern "C" fn(Env) -> c_void;
+pub type MachHandler = extern "C" fn(Env);
 #[link(name = "sketchybar", kind = "static")]
 extern "C" {
     pub fn sketchybar(message: *mut c_char) -> *mut c_char;
     pub fn event_server_begin(
-        event_handler: mach_handler,
+        event_handler: MachHandler,
         bootstrap_name: *mut c_char,
     );
-    pub fn env_get_value_for_key(env: env, key: *mut c_char) -> *mut c_char;
+    pub fn env_get_value_for_key(env: EnvRaw, key: *mut c_char) -> *mut c_char;
 
 }
-type env = *mut c_char;
+type EnvRaw = *mut c_char;
 #[repr(transparent)]
 pub struct Env {
-    inner: env,
+    inner: EnvRaw,
 }
 impl Env {
     pub fn get_v_for_c(&self, key: &str) -> String {
         let string = CString::new(key).unwrap();
+        let leak = string.into_raw();
         let foo =
-            unsafe { env_get_value_for_key(self.inner, string.into_raw()) };
-
-        unsafe {
+            unsafe { env_get_value_for_key(self.inner, leak) };
+        let result = unsafe {
             core::str::from_utf8_unchecked(CStr::from_ptr(foo).to_bytes())
         }
-        .to_owned()
+        .to_owned();
+        let _ = unsafe { CString::from_raw(leak) };
+        return result;
+
     }
 }
 /// Sends a message to `SketchyBar` and returns the response.
@@ -94,22 +97,27 @@ impl Env {
 pub fn message(message: &str) -> Result<String, SketchybarError> {
     let command = CString::new(message)
         .map_err(|_| SketchybarError::MessageConversionError)?;
-
+    let leak = command.into_raw();
     let result = unsafe {
-        CStr::from_ptr(sketchybar(command.into_raw()))
+        CStr::from_ptr(sketchybar(leak))
             .to_string_lossy()
             .into_owned()
     };
+    let _ = unsafe{ CString::from_raw(leak) };
 
     Ok(result)
 }
 
-pub fn server_begin(event_handler: mach_handler, bootstrap_name: &str) {
+pub fn server_begin(event_handler: MachHandler, bootstrap_name: &str) {
     let string = CString::new(bootstrap_name).unwrap();
+    let leak = string.into_raw();
     let _ = unsafe {
         event_server_begin(
             event_handler,
-            string.into_raw(),
+            leak,
         )
+    };
+    let _ = unsafe {
+        CString::from_raw(leak)
     };
 }

@@ -196,7 +196,7 @@ char* sketchybar(char* message) {
 
   char quote = '\0';
   uint32_t caret = 0;
-  for (int i = 0; i < message_length; ++i) {
+  for (uint32_t i = 0; i < message_length; ++i) {
     if (message[i] == '"' || message[i] == '\'') {
       if (quote == message[i]) quote = '\0';
       else quote = message[i];
