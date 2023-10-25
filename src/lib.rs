@@ -28,12 +28,13 @@ impl fmt::Display for SketchybarError {
 impl Error for SketchybarError {}
 
 pub type MachHandler = extern "C" fn(Env);
+
 #[link(name = "sketchybar", kind = "static")]
 extern "C" {
-    pub fn sketchybar(message: *mut c_char) -> *mut c_char;
+    pub fn sketchybar(message: *const c_char) -> *const c_char;
     pub fn event_server_begin(
         event_handler: MachHandler,
-        bootstrap_name: *mut c_char,
+        bootstrap_name: *const c_char,
     );
     pub fn env_get_value_for_key(env: EnvRaw, key: *mut c_char) -> *mut c_char;
 
@@ -97,27 +98,20 @@ impl Env {
 pub fn message(message: &str) -> Result<String, SketchybarError> {
     let command = CString::new(message)
         .map_err(|_| SketchybarError::MessageConversionError)?;
-    let leak = command.into_raw();
     let result = unsafe {
-        CStr::from_ptr(sketchybar(leak))
+        CStr::from_ptr(sketchybar(command.as_ptr()))
             .to_string_lossy()
             .into_owned()
     };
-    let _ = unsafe{ CString::from_raw(leak) };
-
     Ok(result)
 }
 
 pub fn server_begin(event_handler: MachHandler, bootstrap_name: &str) {
     let string = CString::new(bootstrap_name).unwrap();
-    let leak = string.into_raw();
     let _ = unsafe {
         event_server_begin(
             event_handler,
-            leak,
+            string.as_ptr(),
         )
-    };
-    let _ = unsafe {
-        CString::from_raw(leak)
     };
 }
