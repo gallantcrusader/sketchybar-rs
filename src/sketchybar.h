@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mach/mach.h>
+#include <mach/mach_port.h>
 #include <mach/message.h>
 #include <bootstrap.h>
 #include <stdlib.h>
@@ -50,7 +51,7 @@ char* env_get_value_for_key(env env, char* key) {
   return (char*)"";
 }
 
-mach_port_t mach_get_bs_port() {
+static inline mach_port_t mach_get_bs_port() {
   mach_port_name_t task = mach_task_self();
 
   mach_port_t bs_port;
@@ -70,7 +71,7 @@ mach_port_t mach_get_bs_port() {
   return port;
 }
 
-void mach_receive_message(mach_port_t port, struct mach_buffer* buffer, bool timeout) {
+static inline void mach_receive_message(mach_port_t port, struct mach_buffer* buffer, bool timeout) {
   *buffer = (struct mach_buffer) { 0 };
   mach_msg_return_t msg_return;
   if (timeout)
@@ -81,7 +82,7 @@ void mach_receive_message(mach_port_t port, struct mach_buffer* buffer, bool tim
                           port,
                           100,
                           MACH_PORT_NULL             );
-  else
+  else 
     msg_return = mach_msg(&buffer->message.header,
                           MACH_RCV_MSG,
                           0,
@@ -95,28 +96,15 @@ void mach_receive_message(mach_port_t port, struct mach_buffer* buffer, bool tim
   }
 }
 
-char* mach_send_message(mach_port_t port, char* message, uint32_t len) {
+static inline char* mach_send_message(mach_port_t port, char* message, uint32_t len) {
   if (!message || !port) {
-    return NULL;
-  }
-
-  mach_port_t response_port;
-  mach_port_name_t task = mach_task_self();
-  if (mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE,
-                               &response_port          ) != KERN_SUCCESS) {
-    return NULL;
-  }
-
-  if (mach_port_insert_right(task, response_port,
-                                   response_port,
-                                   MACH_MSG_TYPE_MAKE_SEND)!= KERN_SUCCESS) {
     return NULL;
   }
 
   struct mach_message msg = { 0 };
   msg.header.msgh_remote_port = port;
-  msg.header.msgh_local_port = response_port;
-  msg.header.msgh_id = response_port;
+  msg.header.msgh_local_port = 0;
+  msg.header.msgh_id = 0;
   msg.header.msgh_bits = MACH_MSGH_BITS_SET(MACH_MSG_TYPE_COPY_SEND,
                                             MACH_MSG_TYPE_MAKE_SEND,
                                             0,
@@ -138,18 +126,12 @@ char* mach_send_message(mach_port_t port, char* message, uint32_t len) {
            MACH_MSG_TIMEOUT_NONE,
            MACH_PORT_NULL              );
 
-  struct mach_buffer buffer = { 0 };
-  mach_receive_message(response_port, &buffer, true);
-  if (buffer.message.descriptor.address)
-    return (char*)buffer.message.descriptor.address;
-  mach_msg_destroy(&buffer.message.header);
-
   return NULL;
 }
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-bool mach_server_begin(struct mach_server* mach_server, mach_handler handler, char* bootstrap_name) {
+static inline bool mach_server_begin(struct mach_server* mach_server, mach_handler handler, char* bootstrap_name) {
   mach_server->task = mach_task_self();
 
   if (mach_port_allocate(mach_server->task,
@@ -222,6 +204,6 @@ char* sketchybar(char* message) {
   else return (char*)"";
 }
 
-void event_server_begin(mach_handler event_handler, char* bootstrap_name) {
+ void event_server_begin(mach_handler event_handler, char* bootstrap_name) {
   mach_server_begin(&g_mach_server, event_handler, bootstrap_name);
 }
