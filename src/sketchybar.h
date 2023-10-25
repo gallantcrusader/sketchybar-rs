@@ -1,7 +1,6 @@
 #pragma once
 
 #include <mach/mach.h>
-#include <mach/mach_port.h>
 #include <mach/message.h>
 #include <bootstrap.h>
 #include <stdlib.h>
@@ -36,6 +35,7 @@ struct mach_server {
 
 static struct mach_server g_mach_server;
 static mach_port_t g_mach_port = 0;
+static char* g_response = NULL;
 
 char* env_get_value_for_key(env env, char* key) {
   uint32_t caret = 0;
@@ -101,10 +101,23 @@ static inline char* mach_send_message(mach_port_t port, char* message, uint32_t 
     return NULL;
   }
 
+  mach_port_t response_port;
+  mach_port_name_t task = mach_task_self();
+  if (mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE,
+                               &response_port          ) != KERN_SUCCESS) {
+    return NULL;
+  }
+
+  if (mach_port_insert_right(task, response_port,
+                                   response_port,
+                                   MACH_MSG_TYPE_MAKE_SEND)!= KERN_SUCCESS) {
+    return NULL;
+  }
+
   struct mach_message msg = { 0 };
   msg.header.msgh_remote_port = port;
-  msg.header.msgh_local_port = 0;
-  msg.header.msgh_id = 0;
+  msg.header.msgh_local_port = response_port;
+  msg.header.msgh_id = response_port;
   msg.header.msgh_bits = MACH_MSGH_BITS_SET(MACH_MSG_TYPE_COPY_SEND,
                                             MACH_MSG_TYPE_MAKE_SEND,
                                             0,
@@ -126,7 +139,23 @@ static inline char* mach_send_message(mach_port_t port, char* message, uint32_t 
            MACH_MSG_TIMEOUT_NONE,
            MACH_PORT_NULL              );
 
-  return NULL;
+  struct mach_buffer buffer = { 0 };
+  mach_receive_message(response_port, &buffer, true);
+
+  if (buffer.message.descriptor.address) {
+    g_response = (char*)realloc(g_response, strlen(buffer.message.descriptor.address) + 1);
+    memcpy(g_response, buffer.message.descriptor.address,
+           strlen(buffer.message.descriptor.address) + 1);
+  } else {
+    g_response = (char*)realloc(g_response, 1);
+    *g_response = '\0';
+  }
+
+  mach_msg_destroy(&buffer.message.header);
+  mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
+  mach_port_deallocate(task, response_port);
+
+  return g_response;
 }
 
 #pragma clang diagnostic push
@@ -204,6 +233,6 @@ char* sketchybar(char* message) {
   else return (char*)"";
 }
 
- void event_server_begin(mach_handler event_handler, char* bootstrap_name) {
+void event_server_begin(mach_handler event_handler, char* bootstrap_name) {
   mach_server_begin(&g_mach_server, event_handler, bootstrap_name);
 }
